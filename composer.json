@@ -1,0 +1,33 @@
+{
+    "name": "automattic/wordpress-mcp",
+    "description": "A plugin to integrate WordPress with Model Context Protocol (MCP), providing AI-accessible interfaces to WordPress data and functionality through standardized tools, resources, and prompts. Enables AI assistants to interact with posts, users, site settings, and WooCommerce data.",
+    "type": "wordpress-plugin",
+    "homepage": "https://abdom.me/",
+    "license": "GPL-2.0-or-later",
+    "author": "Abdo (https://abdom.me/)",
+    "require-dev": {
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "phpunit/phpunit": "^9.0",
+        "squizlabs/php_codesniffer": "^3.10",
+        "wp-coding-standards/wpcs": "^3.1",
+        "yoast/phpunit-polyfills": "^1.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "require": {
+        "firebase/php-jwt": "^6.11"
+    },
+    "autoload": {
+        "psr-4": {
+            "Automattic\\WordpressMcp\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Automattic\\WordpressMcp\\Tests\\": "tests/phpunit/"
+        }
+    }
+}
