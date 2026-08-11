@@ -1,0 +1,137 @@
+name: Release plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    env:
+      PLUGIN_SLUG: wordpress-mcp
+      RELEASE_ASSET: wordpress-mcp.zip
+      MAIN_PLUGIN_FILE: wordpress-mcp.php
+      VERSION_CONSTANT: WORDPRESS_MCP_VERSION
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+        with:
+          php-version: '8.0'
+          extensions: mbstring
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          header_version="$(sed -nE 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*([^[:space:]]+).*/\1/p' "$MAIN_PLUGIN_FILE" | head -n 1)"
+          constant_version="$(sed -nE "s/.*define\( '${VERSION_CONSTANT}', '([^']+)' \).*/\1/p" "$MAIN_PLUGIN_FILE" | head -n 1)"
+
+          test -n "$header_version"
+          test -n "$constant_version"
+          test "$tag_version" = "$header_version"
+          test "$tag_version" = "$constant_version"
+
+      - name: Install production Composer dependencies in staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          plugin_dir="$stage/$PLUGIN_SLUG"
+          mkdir -p "$plugin_dir"
+          git archive --format=tar HEAD | tar -xf - -C "$plugin_dir"
+          (
+            cd "$plugin_dir"
+            composer install --no-dev --prefer-dist --no-interaction --no-progress
+            test -f vendor/plugin-update-checker/plugin-update-checker.php
+            grep -Fq 'Plugin Update Checker Library 5.7' vendor/plugin-update-checker/plugin-update-checker.php
+            if find vendor/plugin-update-checker \( -type d -name .git -o -path '*/build' -o -path '*/examples' -o -path '*/.github' -o -name phpcs.xml -o -name .editorconfig -o -name .gitattributes -o -name .gitignore \) -print -quit | grep -q .; then
+              echo 'Bundled Plugin Update Checker contains development-only files.' >&2
+              exit 1
+            fi
+          )
+          mv "$stage" .release-stage
+
+      - name: Lint PHP sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          find .release-stage/$PLUGIN_SLUG -type f -name '*.php' -print0 | xargs -0 -r -n 1 php -l
+
+      - name: Build deterministic release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugin_dir=".release-stage/$PLUGIN_SLUG"
+          rm -rf "$plugin_dir/tests" "$plugin_dir/docs" "$plugin_dir/bin" "$plugin_dir/.github"
+          rm -f "$plugin_dir/.gitignore" "$plugin_dir/Readme.md"
+          find "$plugin_dir" -type d \( -name node_modules -o -name .git \) -prune -exec rm -rf {} +
+          find "$plugin_dir" -type f \( \
+            -name composer.json -o \
+            -name composer.lock -o \
+            -name package.json -o \
+            -name package-lock.json -o \
+            -name pnpm-lock.yaml -o \
+            -name phpunit.xml -o \
+            -name phpunit.xml.dist \
+          \) -delete
+          test -f "$plugin_dir/$MAIN_PLUGIN_FILE"
+          test -f "$plugin_dir/vendor/plugin-update-checker/plugin-update-checker.php"
+          test -f "$plugin_dir/readme.txt"
+
+          source_date_epoch="$(git log -1 --format=%ct)"
+          find "$plugin_dir" -exec touch -h -d "@$source_date_epoch" {} +
+          mkdir -p dist
+          (
+            cd .release-stage
+            find "$PLUGIN_SLUG" -print | LC_ALL=C sort | zip -X -q "../dist/$RELEASE_ASSET" -@
+          )
+          (
+            cd dist
+            sha256sum "$RELEASE_ASSET" > "$RELEASE_ASSET.sha256"
+          )
+
+      - name: Verify release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_entries="$(unzip -Z1 "dist/$RELEASE_ASSET")"
+          test -n "$archive_entries"
+          if printf '%s\n' "$archive_entries" | awk -F/ -v slug="$PLUGIN_SLUG" '$1 != slug { exit 1 }'; then :; else
+            echo 'Archive must contain exactly one top-level plugin directory.' >&2
+            exit 1
+          fi
+          if printf '%s\n' "$archive_entries" | grep -E "/(tests|docs|bin|\.github)(/|$)|/(composer\.json|composer\.lock|package\.json|pnpm-lock\.yaml|phpunit\.xml\.dist)$"; then
+            echo 'Archive contains development-only files.' >&2
+            exit 1
+          fi
+          (
+            cd dist
+            sha256sum --check "$RELEASE_ASSET.sha256"
+          )
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/$RELEASE_ASSET" \
+            "dist/$RELEASE_ASSET.sha256" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag

@@ -3,6 +3,8 @@
  * Plugin name:       WordPress MCP
  * Description:       A plugin to integrate WordPress with Model Context Protocol (MCP), providing AI-accessible interfaces to WordPress data and functionality through standardized tools, resources, and prompts. Enables AI assistants to interact with posts, users, site settings, and WooCommerce data.
  * Version:           0.2.5
+ * Plugin URI:        https://github.com/amAbdoMo/WP-Custom-MCP
+ * Update URI:        https://github.com/amAbdoMo/WP-Custom-MCP
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Abdo
@@ -41,6 +43,9 @@ if ( ! file_exists( WORDPRESS_MCP_PATH . 'vendor/autoload.php' ) ) {
 }
 
 require_once WORDPRESS_MCP_PATH . 'vendor/autoload.php';
+require_once WORDPRESS_MCP_PATH . 'includes/wordpress-mcp-updater.php';
+
+add_action( 'plugins_loaded', 'wordpress_mcp_register_release_updater', 5 );
 
 /**
  * Load the bundled MCP Adapter when the standalone adapter plugin is not active.
