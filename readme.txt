@@ -3,7 +3,7 @@ Contributors: amAbdoMo
 Tags: mcp, model context protocol, ai, api
 Requires at least: 6.4
 Requires PHP: 8.0
-Stable tag: 0.2.6
+Stable tag: 0.2.7
 License: GPL-2.0-or-later
 License URI: https://spdx.org/licenses/GPL-2.0-or-later.html
 
